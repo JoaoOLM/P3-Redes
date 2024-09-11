@@ -1,4 +1,5 @@
 import ipaddress
+import struct
 
 from grader.iputils import *
 
@@ -72,12 +73,40 @@ class IP:
 
     def enviar(self, segmento, dest_addr):
         """
-        Envia segmento para dest_addr, onde dest_addr é um endereço IPv4
-        (string no formato x.y.z.w).
+        Monta o datagrama IP e envia para o próximo salto.
         """
         next_hop = self._next_hop(dest_addr)
-        # TODO: Assumindo que a camada superior é o protocolo TCP, monte o
-        # datagrama com o cabeçalho IP, contendo como payload o segmento.
+        
+        if not next_hop:
+            return  # Sem rota disponível
+
+        src_addr = self.meu_endereco
+        total_len = 20 + len(segmento)  # Tamanho do cabeçalho IP + segmento TCP
+        identification = 0
+        flags_frag_offset = 0
+        ttl = 64
+        proto = IPPROTO_TCP
+        
+        # Cabeçalho IP sem checksum
+        header_sem_checksum = struct.pack(
+            '!BBHHHBBHII', 
+            0x45, 0, total_len, identification, flags_frag_offset, ttl, proto, 
+            0, int(ipaddress.IPv4Address(src_addr)), int(ipaddress.IPv4Address(dest_addr))
+        )
+
+        # Calcula o checksum do cabeçalho
+        checksum = calc_checksum(header_sem_checksum)
+        
+        # Cabeçalho IP completo com checksum
+        header_completo = struct.pack(
+            '!BBHHHBBHII', 
+            0x45, 0, total_len, identification, flags_frag_offset, ttl, proto, 
+            checksum, int(ipaddress.IPv4Address(src_addr)), int(ipaddress.IPv4Address(dest_addr))
+        )
+        
+        # Datagrama completo (cabeçalho + segmento TCP)
+        datagrama = header_completo + segmento
+        
         self.enlace.enviar(datagrama, next_hop)
 
 # Commit vazio
