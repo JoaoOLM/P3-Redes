@@ -32,14 +32,20 @@ class IP:
             self.enlace.enviar(datagrama, next_hop)
 
     def _next_hop(self, dest_addr):
-        # TODO: Use a tabela de encaminhamento para determinar o próximo salto
-        # (next_hop) a partir do endereço de destino do datagrama (dest_addr).
-        # Retorne o next_hop para o dest_addr fornecido.
+        """
+        Encontra o próximo salto com base no prefixo mais longo.
+        """
         destino = ipaddress.IPv4Address(dest_addr)
-        for rede, next_hop in self.tabela_encaminhamento:
+        melhor_cidr = None
+        next_hop = None
+
+        for rede, hop in self.tabela_encaminhamento:
             if destino in rede:
-                return next_hop
-        return None
+                if not melhor_cidr or rede.prefixlen > melhor_cidr.prefixlen:
+                    melhor_cidr = rede
+                    next_hop = hop
+        
+        return next_hop
 
     def definir_endereco_host(self, meu_endereco):
         """
