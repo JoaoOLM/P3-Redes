@@ -19,17 +19,34 @@ class IP:
         self.tabela_encaminhamento = []
 
     def __raw_recv(self, datagrama):
-        dscp, ecn, identification, flags, frag_offset, ttl, proto, \
-           src_addr, dst_addr, payload = read_ipv4_header(datagrama)
-        if dst_addr == self.meu_endereco:
-            # atua como host
-            if proto == IPPROTO_TCP and self.callback:
-                self.callback(src_addr, dst_addr, payload)
-        else:
-            # atua como roteador
-            next_hop = self._next_hop(dst_addr)
-            # TODO: Trate corretamente o campo TTL do datagrama
-            self.enlace.enviar(datagrama, next_hop)
+        dscp, ecn, identification, flags_frag_offset, frag_offset, ttl, proto, \
+        src_addr, dst_addr, payload = read_ipv4_header(datagrama)
+
+        if ttl <= 1:
+            # TTL chegou a zero, descarta o datagrama e gera ICMP Time Exceeded
+            self._enviar_icmp_time_exceeded(src_addr)
+            return
+
+        ttl -= 1
+        new_header = struct.pack(
+            '!BBHHHBBHII',
+            0x45, 0, len(datagrama), identification, flags_frag_offset, ttl, proto,
+            0, int(ipaddress.IPv4Address(src_addr)), int(ipaddress.IPv4Address(dst_addr))
+        )
+        checksum = calc_checksum(new_header)
+        new_header = struct.pack(
+            '!BBHHHBBHII',
+            0x45, 0, len(datagrama), identification, flags_frag_offset, ttl, proto,
+            checksum, int(ipaddress.IPv4Address(src_addr)), int(ipaddress.IPv4Address(dst_addr))
+        )
+        
+        datagrama = new_header + payload
+        next_hop = self._next_hop(dst_addr)
+        self.enlace.enviar(datagrama, next_hop)
+        
+    def _enviar_icmp_time_exceeded(self, src_addr):
+        # Função para enviar mensagem ICMP Time Exceeded
+        pass
 
     def _next_hop(self, dest_addr):
         """
@@ -63,13 +80,9 @@ class IP:
         Onde os CIDR são fornecidos no formato 'x.y.z.w/n', e os
         next_hop são fornecidos no formato 'x.y.z.w'.
         """
-        # TODO: Guarde a tabela de encaminhamento. Se julgar conveniente,
-        # converta-a em uma estrutura de dados mais eficiente.
-        
         self.tabela_encaminhamento = [
             (ipaddress.IPv4Network(cidr, strict=False), next_hop) for cidr, next_hop in tabela
         ]
-
 
     def registrar_recebedor(self, callback):
         """
@@ -114,5 +127,3 @@ class IP:
         datagrama = header_completo + segmento
         
         self.enlace.enviar(datagrama, next_hop)
-
-# Commit vazio
